@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In | NumanOS CRM</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="auth-body">
+    <div class="auth-bg"></div>
+
+    <div class="auth-card">
+        <a href="index.html" class="auth-back"><i class="fas fa-arrow-left"></i> Back to portfolio</a>
+        <a href="index.html" class="logo auth-logo">
+            <span class="logo-bracket">&lt;</span>NI<span class="logo-bracket">/&gt;</span>
+            <span style="font-size:0.9rem;color:var(--text-secondary);font-weight:600;margin-left:6px">NumanOS</span>
+        </a>
+
+        <h1>Sign In</h1>
+        <p class="auth-sub">Access your NumanOS CRM dashboard.</p>
+
+        <div id="authError" class="auth-error" style="display:none"></div>
+
+        <form id="loginForm">
+            <!-- Credentials step -->
+            <div id="credStep">
+                <label class="auth-label" for="email">Email</label>
+                <div class="auth-field">
+                    <i class="fas fa-envelope"></i>
+                    <input type="email" id="email" placeholder="you@example.com" autocomplete="email" required>
+                </div>
+
+                <label class="auth-label" for="password">Password</label>
+                <div class="auth-field">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+                    <button type="button" class="auth-eye" id="togglePw" aria-label="Show password"><i class="fas fa-eye"></i></button>
+                </div>
+
+                <div class="auth-row">
+                    <label class="auth-check"><input type="checkbox" id="remember" checked> Keep me signed in</label>
+                    <a href="#" class="auth-link">Forgot password?</a>
+                </div>
+            </div>
+
+            <!-- MFA step (hidden until needed) -->
+            <div id="mfaStep" style="display:none">
+                <label class="auth-label" for="mfaCode"><i class="fas fa-shield-halved"></i> Authentication code</label>
+                <div class="auth-field">
+                    <i class="fas fa-key"></i>
+                    <input type="text" id="mfaCode" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code">
+                </div>
+                <p class="auth-note" style="text-align:left;margin-bottom:14px">Enter the code from your authenticator app.</p>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full btn-lg" id="loginBtn" data-label="<i class='fas fa-right-to-bracket'></i> Sign In">
+                <i class="fas fa-right-to-bracket"></i> Sign In
+            </button>
+        </form>
+
+        <div class="auth-divider"><span>OR</span></div>
+        <button class="btn btn-google btn-full" onclick="alert('Google SSO connects via the Integrations module.')">
+            <i class="fab fa-google"></i> Continue with Google
+        </button>
+
+        <p class="auth-mfa"><i class="fas fa-shield-halved"></i> Protected by multi-factor authentication</p>
+        <p class="auth-note">First sign-in creates your owner account. Demo: use any email &amp; password.</p>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+</body>
+</html>

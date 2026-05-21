@@ -1,0 +1,15 @@
+# Python / backend
+backend/venv/
+__pycache__/
+*.pyc
+backend/.env
+.env
+backend/uploads/
+
+# Node
+node_modules/
+
+# OS / editor
+.DS_Store
+*.log
+*.swp

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NumanOS — CRM Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="dash-body">
+    <div class="dash-layout">
+        <!-- Sidebar -->
+        <aside class="dash-sidebar" id="sidebar">
+            <div class="dash-brand">
+                <span class="logo-bracket">&lt;</span>NI<span class="logo-bracket">/&gt;</span>
+                <span style="font-size:0.95rem;color:var(--text-secondary)">NumanOS</span>
+            </div>
+            <nav class="dash-nav" id="dashNav">
+                <a data-view="overview"><i class="fas fa-gauge-high"></i> Overview</a>
+                <a data-view="expenses"><i class="fas fa-wallet"></i> Expenses</a>
+                <a data-view="storage"><i class="fas fa-folder-open"></i> Storage</a>
+                <a data-view="notes"><i class="fas fa-note-sticky"></i> Notes</a>
+                <a data-view="meetings"><i class="fas fa-calendar-check"></i> Meetings</a>
+                <a data-view="ai"><i class="fas fa-robot"></i> AI Assistant</a>
+                <a data-view="email"><i class="fas fa-envelope"></i> Email</a>
+                <a data-view="projects"><i class="fas fa-diagram-project"></i> Projects</a>
+                <a data-view="integrations"><i class="fas fa-plug"></i> Integrations</a>
+                <a data-view="settings"><i class="fas fa-gear"></i> Settings</a>
+            </nav>
+            <div class="dash-sidebar-foot">
+                <nav class="dash-nav">
+                    <a href="index.html"><i class="fas fa-globe"></i> View Portfolio</a>
+                    <a id="signOut"><i class="fas fa-right-from-bracket"></i> Sign Out</a>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <div class="dash-main">
+            <header class="dash-topbar">
+                <button class="dash-hamburger" id="hamburger" aria-label="Toggle menu"><i class="fas fa-bars"></i></button>
+                <div class="dash-search">
+                    <i class="fas fa-magnifying-glass"></i>
+                    <input type="text" placeholder="Search anything…">
+                </div>
+                <div class="dash-user">
+                    <div class="dash-avatar" id="userAvatar">NI</div>
+                    <div style="line-height:1.2">
+                        <div id="userName" style="font-size:0.85rem;font-weight:600">Numan</div>
+                        <div id="userEmail" style="font-size:0.74rem;color:var(--text-secondary)"></div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="dash-content" id="view">
+                <div class="empty"><i class="fas fa-circle-notch fa-spin"></i> Loading…</div>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
