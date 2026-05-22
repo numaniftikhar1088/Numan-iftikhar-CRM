@@ -84,6 +84,7 @@
       ['integrations', 'fa-plug', 'Integrations', 'Connect other services'],
     ];
     setHTML(
+      '<span class="dash-chip"><i class="fas fa-wand-magic-sparkles"></i> My Account Overview</span>' +
       head('Welcome back, ' + esc((u.name || 'Numan').split(' ')[0]) + ' 👋', "Here's your command center.") +
         `<div class="stat-grid">
           ${card('fa-sack-dollar', money(s.expenses_total), 'Expenses tracked')}

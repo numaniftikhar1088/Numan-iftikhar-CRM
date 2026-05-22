@@ -4,6 +4,7 @@
 .dash-body {
   background: var(--bg-dark);
   min-height: 100vh;
+  font-family: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 .dash-layout {
@@ -13,13 +14,13 @@
 
 /* --- Sidebar --- */
 .dash-sidebar {
-  width: 248px;
+  width: 252px;
   flex-shrink: 0;
-  background: var(--bg-surface);
+  background: #ffffff;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 20px 14px;
+  padding: 18px 14px;
   position: fixed;
   top: 0;
   bottom: 0;
@@ -31,36 +32,37 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px 18px;
+  padding: 8px 10px 20px;
   font-weight: 800;
   font-size: 1.2rem;
+  letter-spacing: -0.02em;
 }
-.dash-brand .logo-bracket { color: var(--primary); }
+.dash-brand .logo-bracket { color: var(--accent); }
 .dash-nav {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   overflow-y: auto;
 }
 .dash-nav a {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  padding: 11px 14px;
+  border-radius: 10px;
+  color: #4b5563;
+  font-size: 0.94rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
-.dash-nav a i { width: 18px; text-align: center; }
-.dash-nav a:hover { background: var(--bg-card); color: var(--text-primary); }
-.dash-nav a.active {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--primary-light);
-  box-shadow: inset 2px 0 0 var(--primary);
-}
+.dash-nav a i { width: 20px; text-align: center; font-size: 1rem; color: #9aa1ac; transition: color 0.15s; }
+.dash-nav a:hover { background: #f4f5f7; color: #111827; }
+.dash-nav a:hover i { color: #111827; }
+.dash-nav a.active { background: #eef0f3; color: #111827; font-weight: 600; }
+.dash-nav a.active i { color: var(--accent); }
 .dash-sidebar-foot {
   border-top: 1px solid var(--border);
   padding-top: 12px;
@@ -144,8 +146,24 @@
 
 /* --- Headings --- */
 .view-head { margin-bottom: 22px; }
-.view-head h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
-.view-head p { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+.view-head h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+.view-head p { color: var(--text-secondary); font-size: 0.92rem; margin-top: 5px; }
+
+/* RHK-style section chip */
+.dash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  margin-bottom: 14px;
+}
+.dash-chip i { color: var(--accent); font-size: 0.8rem; }
 
 /* --- Cards / grids --- */
 .stat-grid {
@@ -166,7 +184,7 @@
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(17, 24, 39, 0.12);
   color: var(--primary-light);
   margin-bottom: 12px;
 }
@@ -248,7 +266,7 @@
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 600;
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(17, 24, 39, 0.12);
   color: var(--primary-light);
 }
 .chip.gray { background: var(--bg-card-hover); color: var(--text-secondary); }
