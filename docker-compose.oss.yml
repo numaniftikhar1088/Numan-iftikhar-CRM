@@ -1,0 +1,113 @@
+# NumanOS — open-source services for each feature pillar.
+# Instead of hand-coding every feature, we self-host proven OSS apps and the
+# NumanOS dashboard launches into them.
+#
+#   docker compose -f docker-compose.oss.yml up -d            # start all
+#   docker compose -f docker-compose.oss.yml up -d memos vikunja filebrowser n8n   # light set
+#   docker compose -f docker-compose.oss.yml down             # stop
+#
+# Ports:
+#   Notes (Memos)            http://localhost:5230
+#   Projects (Vikunja)       http://localhost:3456
+#   Storage (Filebrowser)    http://localhost:8089   (login: admin / admin)
+#   Automation (n8n)         http://localhost:5678
+#   AI/RAG (AnythingLLM)     http://localhost:3001
+#   Expenses (Firefly III)   http://localhost:8082
+
+services:
+  # ---- Notes (Notion-style) ----
+  memos:
+    image: ghcr.io/usememos/memos:stable
+    container_name: numanos-notes
+    ports: ["5230:5230"]
+    volumes: ["memos_data:/var/opt/memos"]
+    restart: unless-stopped
+
+  # ---- Projects / tasks ----
+  vikunja:
+    image: vikunja/vikunja:latest
+    container_name: numanos-projects
+    environment:
+      VIKUNJA_SERVICE_PUBLICURL: "http://localhost:3456"
+      VIKUNJA_SERVICE_JWTSECRET: "numanos-dev-vikunja-secret-change-me"
+    ports: ["3456:3456"]
+    volumes:
+      - vikunja_files:/app/vikunja/files
+      - vikunja_db:/db
+    restart: unless-stopped
+
+  # ---- Personal cloud storage ----
+  filebrowser:
+    image: filebrowser/filebrowser:s6
+    container_name: numanos-storage
+    ports: ["8089:80"]
+    volumes:
+      - filebrowser_files:/srv
+      - filebrowser_config:/config
+      - filebrowser_db:/database
+    restart: unless-stopped
+
+  # ---- Integrations + email automation ----
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: numanos-automation
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      GENERIC_TIMEZONE: "Asia/Karachi"
+    ports: ["5678:5678"]
+    volumes: ["n8n_data:/home/node/.n8n"]
+    restart: unless-stopped
+
+  # ---- AI assistant + RAG (LangChain-style) + email drafting ----
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: numanos-ai
+    environment:
+      STORAGE_DIR: "/app/server/storage"
+    ports: ["3001:3001"]
+    volumes: ["anythingllm_data:/app/server/storage"]
+    cap_add: ["SYS_ADMIN"]
+    restart: unless-stopped
+
+  # ---- Expense tracker ----
+  firefly-db:
+    image: mariadb:11
+    container_name: numanos-firefly-db
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: "firefly"
+      MYSQL_USER: "firefly"
+      MYSQL_PASSWORD: "firefly-secret"
+    volumes: ["firefly_db:/var/lib/mysql"]
+    restart: unless-stopped
+
+  firefly:
+    image: fireflyiii/core:latest
+    container_name: numanos-expenses
+    environment:
+      APP_KEY: "S0meR4ndomThirtyTwoCharKey123456"
+      DB_CONNECTION: "mysql"
+      DB_HOST: "firefly-db"
+      DB_PORT: "3306"
+      DB_DATABASE: "firefly"
+      DB_USERNAME: "firefly"
+      DB_PASSWORD: "firefly-secret"
+      APP_URL: "http://localhost:8082"
+      TZ: "Asia/Karachi"
+    ports: ["8082:8080"]
+    depends_on: ["firefly-db"]
+    volumes: ["firefly_upload:/var/www/html/storage/upload"]
+    restart: unless-stopped
+
+volumes:
+  memos_data:
+  vikunja_files:
+  vikunja_db:
+  filebrowser_files:
+  filebrowser_config:
+  filebrowser_db:
+  n8n_data:
+  anythingllm_data:
+  firefly_db:
+  firefly_upload:

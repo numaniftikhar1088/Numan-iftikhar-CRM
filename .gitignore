@@ -13,3 +13,6 @@ node_modules/
 .DS_Store
 *.log
 *.swp
+
+# Claude Code local config + agent worktrees
+.claude/
