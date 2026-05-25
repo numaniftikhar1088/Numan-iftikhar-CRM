@@ -22,6 +22,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import pyotp
 
+
 from core import (
     store, pub, new_id, now_iso, make_token, decode_token,
     require_auth, current_user, MFA_TTL,
@@ -225,7 +226,27 @@ def stats():
         projects=s.col("projects").count_documents({"user_id": uid}),
         meetings=s.col("meetings").count_documents({"user_id": uid}),
         files=s.col("files").count_documents({"user_id": uid}),
+        projects_list=[pub(p) for p in s.col("projects").find({"user_id": uid}, sort=("created_at", -1))[:4]],
+        meetings_list=[pub(m) for m in s.col("meetings").find({"user_id": uid}, sort=("when", 1))],
     )
+
+
+# --------------------------------------------------------------------------- #
+#  User preferences (monthly budget, etc.)                                     #
+# --------------------------------------------------------------------------- #
+@app.get("/api/prefs")
+@require_auth
+def prefs_get():
+    return jsonify((current_user() or {}).get("prefs", {}))
+
+
+@app.put("/api/prefs")
+@require_auth
+def prefs_put():
+    body = request.get_json(force=True, silent=True) or {}
+    prefs = {**((current_user() or {}).get("prefs") or {}), **body}
+    _users().update_one({"_id": g.user_id}, {"$set": {"prefs": prefs}})
+    return jsonify(prefs)
 
 
 # --------------------------------------------------------------------------- #
@@ -291,12 +312,18 @@ def storage_delete(file_id):
 #  Integrations                                                                #
 # --------------------------------------------------------------------------- #
 DEFAULT_INTEGRATIONS = [
-    {"key": "gmail", "name": "Gmail", "desc": "Send generated emails", "icon": "fa-envelope"},
-    {"key": "gcal", "name": "Google Calendar", "desc": "Sync client meetings", "icon": "fa-calendar"},
-    {"key": "gdrive", "name": "Google Drive", "desc": "Back up your files", "icon": "fa-hard-drive"},
-    {"key": "slack", "name": "Slack", "desc": "Notifications", "icon": "fa-slack"},
-    {"key": "github", "name": "GitHub", "desc": "Sync projects", "icon": "fa-github"},
-    {"key": "stripe", "name": "Stripe", "desc": "Invoicing", "icon": "fa-stripe-s"},
+    {"key": "github", "name": "GitHub", "kind": "github", "icon": "fab fa-github",
+     "desc": "Import your public repositories as projects."},
+    {"key": "slack", "name": "Slack", "kind": "slack", "icon": "fab fa-slack",
+     "desc": "Post notifications to a channel via an incoming webhook."},
+    {"key": "gmail", "name": "Gmail", "kind": "oauth", "icon": "fas fa-envelope",
+     "desc": "Send generated emails from your inbox."},
+    {"key": "gcal", "name": "Google Calendar", "kind": "oauth", "icon": "fas fa-calendar-days",
+     "desc": "Sync client meetings to your calendar."},
+    {"key": "gdrive", "name": "Google Drive", "kind": "oauth", "icon": "fab fa-google-drive",
+     "desc": "Back up your stored files."},
+    {"key": "stripe", "name": "Stripe", "kind": "oauth", "icon": "fab fa-stripe-s",
+     "desc": "Send invoices and accept payments."},
 ]
 
 
@@ -305,7 +332,8 @@ def _seed_integrations(user_id):
     for item in DEFAULT_INTEGRATIONS:
         col.insert_one({
             "_id": new_id(), "user_id": user_id, "key": item["key"], "name": item["name"],
-            "desc": item["desc"], "icon": item["icon"], "connected": False, "created_at": now_iso(),
+            "desc": item["desc"], "icon": item["icon"], "kind": item["kind"],
+            "connected": False, "config": {}, "created_at": now_iso(),
         })
 
 
@@ -329,6 +357,100 @@ def integrations_toggle(item_id):
         return jsonify(error="not found"), 404
     col.update_one({"_id": item_id}, {"$set": {"connected": not doc.get("connected", False)}})
     return jsonify(pub(col.find_one({"_id": item_id})))
+
+
+def _integration(key):
+    return store().col("integrations").find_one({"user_id": g.user_id, "key": key})
+
+
+@app.put("/api/integrations/<item_id>/config")
+@require_auth
+def integrations_config(item_id):
+    """Save real config for an integration (e.g. Slack webhook, GitHub username)."""
+    body = request.get_json(force=True, silent=True) or {}
+    col = store().col("integrations")
+    doc = col.find_one({"_id": item_id, "user_id": g.user_id})
+    if not doc:
+        return jsonify(error="not found"), 404
+    cfg = {**(doc.get("config") or {}), **{k: v for k, v in body.items()}}
+    connected = bool(cfg.get("webhook_url") or cfg.get("username"))
+    col.update_one({"_id": item_id}, {"$set": {"config": cfg, "connected": connected}})
+    return jsonify(pub(col.find_one({"_id": item_id})))
+
+
+@app.post("/api/integrations/github/import")
+@require_auth
+def github_import():
+    """Pull a user's public GitHub repos and create real Project records."""
+    import json as _json
+    import urllib.request
+    import urllib.error
+
+    body = request.get_json(force=True, silent=True) or {}
+    doc = _integration("github") or {}
+    username = (body.get("username") or (doc.get("config") or {}).get("username") or "").strip()
+    if not username:
+        return jsonify(error="Enter your GitHub username first."), 400
+
+    url = f"https://api.github.com/users/{username}/repos?per_page=100&sort=updated"
+    req = urllib.request.Request(url, headers={"User-Agent": "NumanOS", "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            repos = _json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        msg = "GitHub user not found." if exc.code == 404 else f"GitHub API error ({exc.code})."
+        return jsonify(error=msg), 400
+    except Exception as exc:
+        return jsonify(error=f"Could not reach GitHub: {exc}"), 502
+
+    projects = store().col("projects")
+    existing = {p.get("link") for p in projects.find({"user_id": g.user_id})}
+    created = 0
+    for repo in repos:
+        if repo.get("fork"):
+            continue
+        link = repo.get("html_url")
+        if not link or link in existing:
+            continue
+        projects.insert_one({
+            "_id": new_id(), "user_id": g.user_id,
+            "name": repo.get("name") or "repo",
+            "status": "Done" if repo.get("archived") else "Active",
+            "tech": repo.get("language") or "",
+            "desc": repo.get("description") or "",
+            "stars": repo.get("stargazers_count", 0),
+            "link": link, "source": "github",
+            "created_at": now_iso(), "updated_at": now_iso(),
+        })
+        existing.add(link)
+        created += 1
+
+    if doc:
+        cfg = {**(doc.get("config") or {}), "username": username}
+        store().col("integrations").update_one(
+            {"_id": doc["_id"]}, {"$set": {"config": cfg, "connected": True}}
+        )
+    return jsonify(imported=created, fetched=len(repos), username=username)
+
+
+@app.post("/api/integrations/slack/test")
+@require_auth
+def slack_test():
+    """Send a real test message to the configured Slack incoming webhook."""
+    import json as _json
+    import urllib.request
+
+    doc = _integration("slack") or {}
+    webhook = (doc.get("config") or {}).get("webhook_url", "").strip()
+    if not webhook:
+        return jsonify(error="Add your Slack incoming-webhook URL first."), 400
+    payload = _json.dumps({"text": "✅ NumanOS is connected — this is a test notification."}).encode()
+    req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=8)
+    except Exception as exc:
+        return jsonify(error=f"Slack rejected the webhook: {exc}"), 400
+    return jsonify(ok=True, message="Test message sent to Slack.")
 
 
 # --------------------------------------------------------------------------- #
@@ -395,6 +517,20 @@ def email_generate():
     return jsonify(pub(draft))
 
 
+@app.get("/api/email/drafts")
+@require_auth
+def email_drafts():
+    docs = store().col("email_drafts").find({"user_id": g.user_id}, sort=("created_at", -1))
+    return jsonify([pub(d) for d in docs])
+
+
+@app.delete("/api/email/drafts/<draft_id>")
+@require_auth
+def email_draft_delete(draft_id):
+    store().col("email_drafts").delete_one({"_id": draft_id, "user_id": g.user_id})
+    return jsonify(ok=True)
+
+
 @app.post("/api/ai/chat")
 @require_auth
 def ai_chat():
@@ -403,37 +539,105 @@ def ai_chat():
     if not question:
         return jsonify(error="Empty message."), 400
 
-    # Simple RAG: retrieve the user's notes as context.
-    notes = store().col("notes").find({"user_id": g.user_id})
-    context_blocks = []
-    for n in notes[:20]:
-        context_blocks.append(f"# {n.get('title','Untitled')}\n{n.get('content','')}")
-    context = "\n\n".join(context_blocks)
+    s = store()
+    uid = g.user_id
+    notes = s.col("notes").find({"user_id": uid}, sort=("created_at", -1))
+    expenses = s.col("expenses").find({"user_id": uid})
+    projects = s.col("projects").find({"user_id": uid}, sort=("created_at", -1))
+    meetings = s.col("meetings").find({"user_id": uid}, sort=("when", 1))
+
+    # Build a compact, structured snapshot of the user's workspace as RAG context.
+    blocks = []
+    if notes:
+        blocks.append("## NOTES\n" + "\n\n".join(
+            f"### {n.get('title','Untitled')}\n{(n.get('content') or '')[:1200]}" for n in notes[:20]
+        ))
+    if expenses:
+        total = round(sum(float(e.get("amount") or 0) for e in expenses), 2)
+        by_cat = {}
+        for e in expenses:
+            by_cat[e.get("category", "Other")] = round(by_cat.get(e.get("category", "Other"), 0) + float(e.get("amount") or 0), 2)
+        cats = ", ".join(f"{k}: ${v}" for k, v in by_cat.items())
+        recent = "; ".join(f"{e.get('title','?')} (${e.get('amount',0)})" for e in expenses[:8])
+        blocks.append(f"## EXPENSES\nTotal tracked: ${total} across {len(expenses)} transactions.\nBy category: {cats}.\nRecent: {recent}")
+    if projects:
+        blocks.append("## PROJECTS\n" + "\n".join(
+            f"- {p.get('name','?')} [{p.get('status','Active')}] {p.get('tech','')} {('— ' + p.get('desc','')) if p.get('desc') else ''}".strip()
+            for p in projects[:25]
+        ))
+    if meetings:
+        blocks.append("## MEETINGS\n" + "\n".join(
+            f"- {m.get('title','Meeting')} with {m.get('client','?')} at {m.get('when','TBD')}" for m in meetings[:15]
+        ))
+    context = "\n\n".join(blocks)
 
     system = (
-        "You are NumanOS Assistant. Answer using the user's own notes and data when relevant. "
-        "Be concise and cite the note title when you use one."
+        "You are NumanOS Assistant, a personal copilot embedded in the user's CRM. "
+        "Answer using the WORKSPACE DATA below whenever it is relevant — summarise, calculate, "
+        "and reference specific items (note titles, project names, amounts). If the data does not "
+        "contain the answer, say so briefly and answer from general knowledge. Be concise and direct."
     )
-    prompt = f"Notes:\n{context or '(no notes yet)'}\n\nQuestion: {question}"
-    out = _claude(system, prompt)
+    prompt = f"WORKSPACE DATA:\n{context or '(the workspace is empty)'}\n\nUSER QUESTION: {question}"
+    out = _claude(system, prompt, max_tokens=1100)
 
     if out is None:
-        # Keyword fallback over notes
-        import re
-        q_words = {w for w in re.findall(r"[a-z0-9]+", question.lower()) if len(w) > 3}
-        hits = []
-        for n in notes:
-            blob = (n.get("title", "") + " " + n.get("content", "")).lower()
-            if any(w in blob for w in q_words):
-                hits.append(n.get("title", "Untitled"))
-        if hits:
-            out = ("Based on your notes, these look relevant: "
-                   + ", ".join(hits[:5])
-                   + ".\n\n(Set ANTHROPIC_API_KEY to get full Claude-powered answers.)")
-        else:
-            out = ("I couldn't find matching notes. Add notes and set ANTHROPIC_API_KEY to enable "
-                   "full RAG answers with Claude.")
+        out = _local_assistant(question, notes, expenses, projects, meetings)
     return jsonify(answer=out)
+
+
+def _local_assistant(question, notes, expenses, projects, meetings):
+    """A genuinely useful no-API-key assistant: keyword retrieval + quick analytics."""
+    import re
+
+    q = question.lower()
+    words = {w for w in re.findall(r"[a-z0-9]+", q) if len(w) > 2}
+
+    # Quick analytics intents
+    if any(w in q for w in ("spend", "spent", "expense", "budget", "cost", "money")):
+        total = round(sum(float(e.get("amount") or 0) for e in expenses), 2)
+        by_cat = {}
+        for e in expenses:
+            c = e.get("category", "Other")
+            by_cat[c] = round(by_cat.get(c, 0) + float(e.get("amount") or 0), 2)
+        top = sorted(by_cat.items(), key=lambda x: -x[1])[:5]
+        lines = [f"You've tracked **${total}** across {len(expenses)} transactions."]
+        if top:
+            lines.append("Top categories: " + ", ".join(f"{k} (${v})" for k, v in top) + ".")
+        return "\n".join(lines)
+
+    if any(w in q for w in ("meeting", "calendar", "schedule", "upcoming")):
+        if not meetings:
+            return "You have no meetings scheduled yet."
+        nxt = meetings[:5]
+        return "Upcoming meetings:\n" + "\n".join(
+            f"• {m.get('title','Meeting')} — {m.get('client','')} ({m.get('when','TBD')})" for m in nxt
+        )
+
+    if any(w in q for w in ("project", "building", "working", "repo")):
+        if not projects:
+            return "You have no projects yet. Add some or import them from GitHub in Integrations."
+        return "Your projects:\n" + "\n".join(
+            f"• {p.get('name','?')} [{p.get('status','Active')}] {p.get('tech','')}".strip() for p in projects[:10]
+        )
+
+    # Keyword retrieval over notes with a matching snippet
+    hits = []
+    for n in notes:
+        blob = (n.get("title", "") + " " + (n.get("content") or "")).lower()
+        score = sum(1 for w in words if w in blob)
+        if score:
+            hits.append((score, n))
+    hits.sort(key=lambda x: -x[0])
+    if hits:
+        out = ["Here's what I found in your notes:"]
+        for _, n in hits[:3]:
+            snippet = (n.get("content") or "").strip().replace("\n", " ")[:200]
+            out.append(f"\n**{n.get('title','Untitled')}** — {snippet}…")
+        out.append("\n\n_Tip: set ANTHROPIC_API_KEY to unlock full Claude-powered answers._")
+        return "\n".join(out)
+
+    return ("I couldn't find anything matching that in your workspace. Try adding notes, expenses or "
+            "projects — or set ANTHROPIC_API_KEY to enable full Claude-powered answers.")
 
 
 if __name__ == "__main__":

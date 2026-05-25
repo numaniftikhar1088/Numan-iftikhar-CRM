@@ -5,8 +5,10 @@ Storage abstraction (MongoDB Atlas with an in-memory fallback so the app runs
 out of the box), JWT auth, MFA (TOTP) helpers and small utilities.
 """
 import os
+import json
 import time
 import uuid
+import threading
 import functools
 from datetime import datetime, timezone
 
@@ -82,6 +84,92 @@ class MemoryStore:
         return self._cols.setdefault(name, MemoryCollection())
 
 
+class JsonCollection:
+    """A pymongo-like collection backed by a list inside a JsonStore.
+
+    Mutations persist the whole database to disk so data survives restarts.
+    Single-user scale: simple, correct and dependency-free.
+    """
+
+    def __init__(self, store, name):
+        self._store = store
+        self._name = name
+
+    @property
+    def _docs(self):
+        return self._store._data.setdefault(self._name, [])
+
+    @staticmethod
+    def _match(doc, query):
+        return all(doc.get(k) == v for k, v in query.items())
+
+    def insert_one(self, doc):
+        with self._store._lock:
+            self._docs.append(doc)
+            self._store._save()
+        return type("R", (), {"inserted_id": doc.get("_id")})()
+
+    def find(self, query=None, sort=None):
+        query = query or {}
+        res = [d for d in self._docs if self._match(d, query)]
+        if sort:
+            key, direction = sort
+            res = sorted(res, key=lambda d: d.get(key) or "", reverse=(direction == -1))
+        return res
+
+    def find_one(self, query):
+        for d in self._docs:
+            if self._match(d, query):
+                return d
+        return None
+
+    def update_one(self, query, update):
+        with self._store._lock:
+            d = self.find_one(query)
+            if d:
+                d.update(update.get("$set", {}))
+                self._store._save()
+        return d
+
+    def delete_one(self, query):
+        with self._store._lock:
+            d = self.find_one(query)
+            if d:
+                self._docs.remove(d)
+                self._store._save()
+        return d
+
+    def count_documents(self, query=None):
+        return len(self.find(query or {}))
+
+
+class JsonStore:
+    """Durable single-file JSON store (default backend, no DB required)."""
+
+    def __init__(self, path):
+        self.path = path
+        self._lock = threading.RLock()
+        self._data = {}
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                self._data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self._data = {}
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, ensure_ascii=False, default=str)
+        os.replace(tmp, self.path)  # atomic on POSIX
+
+    def col(self, name):
+        return JsonCollection(self, name)
+
+
 class MongoCollection:
     """Wrap a real pymongo collection in the same small interface."""
 
@@ -137,10 +225,14 @@ def store():
             print("[db] Connected to MongoDB Atlas")
             return _store
         except Exception as exc:  # pragma: no cover
-            print(f"[db] MongoDB connection failed ({exc}); using in-memory store")
-    else:
-        print("[db] No MONGODB_URI set; using in-memory store (data resets on restart)")
-    _store = MemoryStore()
+            print(f"[db] MongoDB connection failed ({exc}); falling back to JSON file store")
+
+    data_path = os.environ.get(
+        "DATA_FILE",
+        os.path.join(os.path.dirname(__file__), "data", "numanos.json"),
+    )
+    _store = JsonStore(data_path)
+    print(f"[db] Using durable JSON file store at {data_path}")
     return _store
 
 

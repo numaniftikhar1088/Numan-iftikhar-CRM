@@ -195,3 +195,34 @@
   word-break: break-all;
   color: var(--primary-light);
 }
+
+/* ============================================================
+   PREMIUM POLISH — auth
+   ============================================================ */
+.auth-bg {
+  background:
+    radial-gradient(900px circle at 12% 12%, rgba(17, 24, 39, 0.10), transparent 42%),
+    radial-gradient(760px circle at 88% 88%, rgba(195, 154, 78, 0.13), transparent 45%),
+    linear-gradient(180deg, #fbfbfc, #f3f4f6);
+}
+
+.auth-card {
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.auth-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--gradient-accent);
+}
+
+/* Gold focus ring to match the brand accent */
+.auth-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(195, 154, 78, 0.15);
+}
